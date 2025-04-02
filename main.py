@@ -11,7 +11,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 from utils.choices import get_age_interval, get_totChol_interval, get_sysBP_interval, map_binary
 
-URL = 'https://qxmd.com/calculate/calculator_253/framingham-risk-score-atp-iii#'
+URL = 'https://qxmd.com/calculate/calculator_252/framingham-risk-score-2008'
 
 CSV_LOCK = None
 OUTFILE = None
@@ -49,22 +49,24 @@ def fill_form_and_get_results(driver, gender, age_interval, totChol_interval, hd
     sysBP_button.click()
 
     medBP_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.NAME, medBP))
+        EC.element_to_be_clickable((By.ID, medBP))
     )
     medBP_button.click()
 
     smoker_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.NAME, smoker))
+        EC.element_to_be_clickable((By.ID, smoker))
     )
     smoker_button.click()
 
     diabetic_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.NAME, diabetic))
+        EC.element_to_be_clickable((By.ID, diabetic))
     )
+    diabetic_button.click()
 
     stroke_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.NAME, stroke))
+        EC.element_to_be_clickable((By.ID, stroke))
     )
+    stroke_button.click()
 
     results_button = WebDriverWait(driver, 10).until(
         EC.element_to_be_clickable((By.ID, "button-3483"))
@@ -87,27 +89,25 @@ def fill_form_and_get_results(driver, gender, age_interval, totChol_interval, hd
 
 def process_row(row):
     try:
-        gender = "Male" if int(row["male"]) == '1' else "Female"
+        gender = "Male" if row["male"] == '1' else "Female"
         age = int(row["age"])
-        smoker_value = map_binary(row["currentSmoker"])
-        medBP_value = map_binary(row["BPMeds"])
         totChol = float(row["totChol"])
         sysBP = float(row["sysBP"])
-        isDiabetic = map_binary(row["diabetes"])
-        stroke_disease = map_binary(row["prevalentStroke"]) 
+
+        medBP_value, smoker_value, isDiabetic, stroke_disease = map_binary(row["BPMeds"], row["currentSmoker"], row["diabetes"], row["prevalentStroke"])
 
         age_interval = get_age_interval(age)
         totChol_interval = get_totChol_interval(totChol)
         sysBP_interval = get_sysBP_interval(sysBP)
         
         hdl_interval_min = "&lt;0.9 mmol/L"
-        hdl_interval_max = "&ge;1.56 mmol/L"
+
 
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--disable-gpu")
 
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
         driver.maximize_window()
         driver.get(URL)
         time.sleep(2)
@@ -124,11 +124,10 @@ def process_row(row):
             driver, gender, age_interval, totChol_interval, hdl_interval_min,
             sysBP_interval, medBP_value, smoker_value, isDiabetic, stroke_disease
         )
-
         driver.quit()
         time.sleep(2)
 
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
         driver.maximize_window()
         driver.get(URL)
         time.sleep(2)
@@ -140,22 +139,13 @@ def process_row(row):
         except Exception:
             pass
 
-        calc_hdl_max, risk_hdl_max = fill_form_and_get_results(
-            driver, gender, age_interval, totChol_interval, hdl_interval_max,
-            sysBP_interval, medBP_value, smoker_value, isDiabetic, stroke_disease
-        )
-        driver.quit()
-        time.sleep(2)
-
         row["calc_hdl_min"] = calc_hdl_min
-        row["calc_hdl_max"] = calc_hdl_max
         row["risk_hdl_min"] = risk_hdl_min
-        row["risk_hdl_max"] = risk_hdl_max
 
         print(f"Processado: Age {age}, totChol {totChol}, sysBP {sysBP}")
     except Exception as e:
         print(f"Erro ao processar a linha {row}: {e}")
-
+    
     try:
         with CSV_LOCK:
             with open(OUTFILE, "a", newline='', encoding="utf-8") as outfile:
@@ -167,15 +157,15 @@ def process_row(row):
     return row
 
 def main():
-    input_filename = "arquivo.csv"  
-    output_filename = ""
+    input_filename = "teste.csv"  
+    output_filename = "results.csv"
 
     with open(input_filename, newline='', encoding="utf-8") as csvfile:
         reader = csv.DictReader(csvfile)
         linhas = [row for row in reader]
 
     fieldnames = list(linhas[0].keys())
-    for col in ["risk_hdl_min_chol_min"]:
+    for col in ["calc_hdl_min", "risk_hdl_min"]:
         if col not in fieldnames:
             fieldnames.append(col)
 
