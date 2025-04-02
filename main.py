@@ -8,20 +8,16 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+from concurrent.futures import ThreadPoolExecutor
 
-from utils.choices import get_age_interval, get_totChol_interval, get_sysBP_interval, map_binary
+from utils.choices import get_age_interval, get_totChol_interval, get_sysBP_interval, map_meds, map_smoker, map_diabete
 
 URL = 'https://qxmd.com/calculate/calculator_252/framingham-risk-score-2008'
 
 CSV_LOCK = None
 OUTFILE = None
 
-def init_worker(lock, out_file):
-    global CSV_LOCK, OUTFILE
-    CSV_LOCK = lock
-    OUTFILE = out_file
-
-def fill_form_and_get_results(driver, gender, age_interval, totChol_interval, hdl_interval, sysBP_interval, medBP, smoker, diabetic, stroke):
+def fill_form_and_get_results(driver, gender, age_interval, totChol_interval, hdl_interval, sysBP_interval, medBP, smoker, diabetic):
 
     gender_button = WebDriverWait(driver, 10).until(
         EC.element_to_be_clickable((By.NAME, gender))
@@ -64,7 +60,7 @@ def fill_form_and_get_results(driver, gender, age_interval, totChol_interval, hd
     diabetic_button.click()
 
     stroke_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.ID, stroke))
+        EC.element_to_be_clickable((By.ID, "input-choice-7245"))
     )
     stroke_button.click()
 
@@ -94,7 +90,9 @@ def process_row(row):
         totChol = float(row["totChol"])
         sysBP = float(row["sysBP"])
 
-        medBP_value, smoker_value, isDiabetic, stroke_disease = map_binary(row["BPMeds"], row["currentSmoker"], row["diabetes"], row["prevalentStroke"])
+        medBP_value = map_meds(row["BPMeds"])
+        smoker_value = map_smoker(row["currentSmoker"])
+        isDiabetic = map_diabete(row["diabetes"])
 
         age_interval = get_age_interval(age)
         totChol_interval = get_totChol_interval(totChol)
@@ -102,15 +100,16 @@ def process_row(row):
         
         hdl_interval_min = "&lt;0.9 mmol/L"
 
-
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
 
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options = chrome_options)
         driver.maximize_window()
         driver.get(URL)
-        time.sleep(2)
+        time.sleep(1)
 
         try:
             cookie_button = WebDriverWait(driver, 10).until(
@@ -122,15 +121,9 @@ def process_row(row):
         
         calc_hdl_min, risk_hdl_min = fill_form_and_get_results(
             driver, gender, age_interval, totChol_interval, hdl_interval_min,
-            sysBP_interval, medBP_value, smoker_value, isDiabetic, stroke_disease
+            sysBP_interval, medBP_value, smoker_value, isDiabetic
         )
-        driver.quit()
-        time.sleep(2)
 
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
-        driver.maximize_window()
-        driver.get(URL)
-        time.sleep(2)
         try:
             cookie_button = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler"))
@@ -145,6 +138,11 @@ def process_row(row):
         print(f"Processado: Age {age}, totChol {totChol}, sysBP {sysBP}")
     except Exception as e:
         print(f"Erro ao processar a linha {row}: {e}")
+
+    finally:
+        if driver:
+            driver.quit()
+        time.sleep(1)
     
     try:
         with CSV_LOCK:
@@ -174,11 +172,13 @@ def main():
         writer.writeheader()
 
     lock = multiprocessing.Lock()
-    pool = multiprocessing.Pool(processes=6, initializer=init_worker, initargs=(lock, output_filename))
-
-    pool.map(process_row, linhas)
-    pool.close()
-    pool.join()
+    
+    global CSV_LOCK, OUTFILE
+    CSV_LOCK = lock
+    OUTFILE = output_filename
+    
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(process_row, linhas))
 
     print("Processamento concluído. Resultados armazenados em", output_filename)
 

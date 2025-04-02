@@ -48,11 +48,18 @@ def get_sysBP_interval(bp):
     else:
         return ">=&ge;160 mmHg"
 
-def map_binary(meds_value, smoker_value, diabete_value, stroke_value):
+def map_meds(meds_value):
     meds_ID = "input-choice-7240" if meds_value == '1' else "input-choice-7239"
-    smoker_ID = "input-choice-7242" if smoker_value == '1' else "input-choice-7241"
-    diabete_ID = "input-choice-7244" if diabete_value == '1' else "input-choice-7243"
-    stroke_ID = "input-choice-7246" if stroke_value == '1' else "input-choice-7245"
 
-    return meds_ID, smoker_ID, diabete_ID, stroke_ID
+    return meds_ID
+
+def map_smoker(smoker_value):
+    smoker_ID = "input-choice-7242" if smoker_value == '1' else "input-choice-7241"
+
+    return smoker_ID
+
+def map_diabete(diabete_value):
+    diabete_ID = "input-choice-7244" if diabete_value == '1' else "input-choice-7243"
+
+    return diabete_ID
     
