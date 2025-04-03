@@ -1,5 +1,4 @@
 import csv
-import time
 import multiprocessing
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -8,7 +7,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 
 from utils.choices import get_age_interval, get_totChol_interval, get_sysBP_interval, map_meds, map_smoker, map_diabete
 
@@ -18,72 +17,67 @@ CSV_LOCK = None
 OUTFILE = None
 
 def fill_form_and_get_results(driver, gender, age_interval, totChol_interval, hdl_interval, sysBP_interval, medBP, smoker, diabetic):
+    try:
+        WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.NAME, gender))
+        ).click()
 
-    gender_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.NAME, gender))
-    )
-    gender_button.click()
+        WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.NAME, age_interval))
+        ).click()
 
-    age_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.NAME, age_interval))
-    )
-    age_button.click()
+        WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.NAME, totChol_interval))
+        ).click()
 
-    totChol_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.NAME, totChol_interval))
-    )
-    totChol_button.click()
+        WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.NAME, hdl_interval))
+        ).click()
 
-    hdl_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.NAME, hdl_interval))
-    )
-    hdl_button.click()
+        WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.NAME, sysBP_interval))
+        ).click()
 
-    sysBP_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.NAME, sysBP_interval))
-    )
-    sysBP_button.click()
+        WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.ID, medBP))
+        ).click()
 
-    medBP_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.ID, medBP))
-    )
-    medBP_button.click()
+        WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.ID, smoker))
+        ).click()
 
-    smoker_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.ID, smoker))
-    )
-    smoker_button.click()
+        WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.ID, diabetic))
+        ).click()
 
-    diabetic_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.ID, diabetic))
-    )
-    diabetic_button.click()
+        WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.ID, "input-choice-7245"))
+        ).click()
 
-    stroke_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.ID, "input-choice-7245"))
-    )
-    stroke_button.click()
+        WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.ID, "button-3483"))
+        ).click()
 
-    results_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.ID, "button-3483"))
-    )
-    results_button.click()
+        calc_result = WebDriverWait(driver, 20).until(
+            EC.visibility_of_all_elements_located((By.ID, "answer-1758"))
+        )
 
-    time.sleep(2)
+        calc_result = calc_result[0].text
 
-    calc_elements = WebDriverWait(driver, 10).until(
-        EC.presence_of_all_elements_located((By.ID, "answer-1758"))
-    )
-    risk_elements = WebDriverWait(driver, 10).until(
-        EC.presence_of_all_elements_located((By.ID, "answer-1759"))
-    )
+        risk_result = WebDriverWait(driver, 20).until(
+            EC.visibility_of_all_elements_located((By.ID, "answer-1759"))
+        )
 
-    calc_result = calc_elements[0].text
-    risk_result = risk_elements[0].text
+        risk_result = risk_result[0].text
 
-    return calc_result, risk_result
+        return calc_result, risk_result
+    
+    except Exception as e:
+        print(f"Erro ao preencher formulário: {e}")
+        return None, None
 
 def process_row(row):
+    driver = None
     try:
         gender = "Male" if row["male"] == '1' else "Female"
         age = int(row["age"])
@@ -106,17 +100,18 @@ def process_row(row):
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
 
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options = chrome_options)
-        driver.maximize_window()
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
         driver.get(URL)
-        time.sleep(1)
+        driver.maximize_window()
+
 
         try:
-            cookie_button = WebDriverWait(driver, 10).until(
+            cookie_button = WebDriverWait(driver, 5).until(
                 EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler"))
             )
             cookie_button.click()
-        except Exception:
+        except:
             pass
         
         calc_hdl_min, risk_hdl_min = fill_form_and_get_results(
@@ -124,26 +119,22 @@ def process_row(row):
             sysBP_interval, medBP_value, smoker_value, isDiabetic
         )
 
-        try:
-            cookie_button = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler"))
-            )
-            cookie_button.click()
-        except Exception:
-            pass
+        if calc_hdl_min is None or risk_hdl_min is None:
+            raise ValueError("Resultados não encontrados")
 
         row["calc_hdl_min"] = calc_hdl_min
         row["risk_hdl_min"] = risk_hdl_min
 
         print(f"Processado: Age {age}, totChol {totChol}, sysBP {sysBP}")
+
+
     except Exception as e:
         print(f"Erro ao processar a linha {row}: {e}")
-
     finally:
         if driver:
             driver.quit()
-        time.sleep(1)
-    
+        
+
     try:
         with CSV_LOCK:
             with open(OUTFILE, "a", newline='', encoding="utf-8") as outfile:
@@ -177,7 +168,7 @@ def main():
     CSV_LOCK = lock
     OUTFILE = output_filename
     
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ProcessPoolExecutor(max_workers=4) as executor:
         results = list(executor.map(process_row, linhas))
 
     print("Processamento concluído. Resultados armazenados em", output_filename)

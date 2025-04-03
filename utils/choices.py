@@ -46,7 +46,7 @@ def get_sysBP_interval(bp):
     elif 150 <= bp <= 159:
         return "150-159 mmHg"
     else:
-        return ">=&ge;160 mmHg"
+        return "&ge;160 mmHg"
 
 def map_meds(meds_value):
     meds_ID = "input-choice-7240" if meds_value == '1' else "input-choice-7239"
